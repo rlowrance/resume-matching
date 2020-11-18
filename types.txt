@@ -1,0 +1,20 @@
+(struct bow (value))
+(bow-words x)
+(bow-counts x)
+(bow-count x)
+(bow-has-word? x w)
+(bow-ref x k [default-value])
+(bow-set x k v)
+(bow-total-of-counts x); -> number, the sum of (bow-counts x)
+(bow-print x)
+(bow-union x1 x2); -> bow
+
+(struct corpus (value))
+(corpus-documentnames x)
+(corpus-bows x)
+(corpus-count x)
+(corpus-ref x k)
+(corpus-set x k v)
+(corpus-vocabulary x); -> bow, for all documents
+(corpus-print name x)
+  
