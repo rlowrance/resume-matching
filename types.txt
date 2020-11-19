@@ -1,6 +1,6 @@
 (struct bow (value))
 (bow-words x)
-(bow-counts x)
+(bow-weights x)
 (bow-count x)
 (bow-has-word? x w)
 (bow-ref x k [default-value])
