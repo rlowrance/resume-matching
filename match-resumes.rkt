@@ -381,50 +381,7 @@
                 tasks-matched-score))))
 
   (when (hash-ref options 'dev) (printf "WARNING: dev mode~n"))
-                                  
-  
-  (exit)
-              
-              
-        
-  (define occupation-documents (filter-documents 'occupation all-documents))
-  (define task-documents (filter-documents 'task all-documents))
-  (define resume-documents (filter-documents 'resume all-documents))
-  (define job-documents (filter-documents 'job all-documents))
-  (define (sorted-matches query others)
-    (define matches (for/list ((other others))
-                      (cons (document-name other)
-                            (cosine-similarity query other))))
-    (sort matches (lambda (a b) (< (cdr a) (cdr b)))))
-  (for ((resume-document resume-documents))
-    (define matching-occupations (head (sorted-matches resume-document occupation-documents)
-                                       (hash-ref options 'n-occupation-matches)));-> (listof (document.score))
-    (for ((matching-occupation matching-occupations))
-      (printf "resume ~a matches occupation ~a with score ~a~n"
-              (document-name resume-document)
-              (car (document-name matching-occupation))
-              (cdr matching-occupation)))
-    (for ((matching-occupation matching-occupations))
-      (define occupation-name (car matching-occupation))
-      (define occupation-task-list (car (filter (lambda (doc) (equal? occupation-name) (document-name doc))
-                                                task-documents)))
-      (define matching-task-lists (head (sorted-matches occupation-task-list task-documents)
-                                        (hash-ref options 'n-task-matches)))
-      (for ((matching-task-list matching-task-lists))
-        (print "resume ~a tasks match tasks for occupation ~a with score ~a~n"
-               (document-name resume-document)
-               (car (document-name matching-task-list))
-               (cdr matching-task-list)))))
+  )
 
-  ; match each resume to all jobs
-  (for ((resume-document resume-documents))
-    (define matching-jobs (head (sorted-matches resume-document job-documents)
-                                (hash-ref options
-                                          'n-job-matches)))
-    (for ((matching-job matching-jobs))
-      (printf "resume ~a matches job ~a with score ~a~n"
-              (document-name resume-document)
-              (document-name (car matching-job))
-              (cdr matching-job)))))
 
 
