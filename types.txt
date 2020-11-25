@@ -1,3 +1,6 @@
+(struct document (kind name hash))
+
+
 (struct bow (value))
 (bow-words x)
 (bow-weights x)
