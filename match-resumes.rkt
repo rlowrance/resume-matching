@@ -22,68 +22,6 @@
      'weights-algorithm 'tf3-idf2; oneof 'tf3-idf2 'tf2-unary
    )))
 
-; bag of words (bow)
-(struct bow (value)
-  #:transparent
-  #:guard (lambda (value type-name)
-            (define (all-strings? xs) (andmap string? xs))
-            (define (all-numbers? xs) (andmap number? xs))
-            (cond ((not (hash? value)) (error type-name "value not a hash: ~a" value))
-                  (else (let ((keys (hash-keys value))
-                              (values (hash-values value)))
-                          (cond ((and (null? keys) (null? values)) value)
-                                ((not (all-strings? keys)) (error type-name "keys not all strings: ~a" keys))
-                                ((not (all-numbers? values)) (error type-name "values not all numbers: ~a" values))
-                                (else value)))))))
-(define (bow-words x) (hash-keys (bow-value x)))
-(define (bow-weights x) (hash-values (bow-value x)))
-(define (bow-count x) (hash-count (bow-value x)))
-(define (bow-has-word? x w) (hash-has-key? (bow-value x) w))
-(define bow-ref
-  (case-lambda ((x k) (hash-ref (bow-value x) k))
-               ((x k default-value) (hash-ref (bow-value x) k default-value))))
-(define (bow-set x k v) (bow (hash-set (bow-value x) k v)))
-(define (bow-total-of-counts bow); number of words in total
-  (foldl + 0 (bow-weights bow)))
-(define (bow-print x); print in order of count
-  (define sorted-words (sort (bow-words x) (lambda (word1 word2) (< (bow-ref x word1) (bow-ref x word2)))))
-  (for ((word sorted-words))
-    (printf "count: ~a word: ~a~n" (bow-ref x word) word)))
-(define (bow-union x1 x2); -> bow
-  (define h (hash-union (bow-value x1)
-                        (bow-value x2)
-                        #:combine (lambda (count1 count2) (+ count1 count2))))
-  (bow h))
-
-; corpus - a collection of documents
-(struct corpus (value)
-  #:transparent
-  #:guard (lambda (value type-name)
-            (define (string-or-path? x) (or (string? x) (path? x)))
-            (define (all-strings-or-paths? xs) (andmap string-or-path? xs))
-            (define (all-bows? xs) (andmap bow? xs))
-            (cond ((not (hash? value)) (error type-name "value not a hash: ~a" value))
-                  (else (let ((keys (hash-keys value))
-                              (values (hash-values value)))
-                          (cond ((not (all-strings-or-paths? keys)) (error type-name "keys not all strings or paths: ~a" keys))
-                                ((not (all-bows? values)) (error type-name "values not all bow: ~a" values))
-                                (else value)))))))
-(define (corpus-documentnames x) (hash-keys (corpus-value x)))
-(define (corpus-bows x) (hash-values (corpus-value x)))
-(define (corpus-count x) (hash-count (corpus-value x)))
-(define (corpus-ref x k) (hash-ref (corpus-value x) k))
-(define (corpus-set x k v) (corpus (hash-set (corpus-value x) k v)))
-(define (corpus-vocabulary x); bow for all documents
-  (let iter ((documentnames (corpus-documentnames x))
-             (result (bow (hash))))
-    (cond ((null? documentnames) result)
-          (else (let ((documentname (car documentnames)))
-                  (iter (cdr documentnames)
-                        (bow-union result (corpus-ref x documentname))))))))
-(define (corpus-print name x)
-  (for (((k v) (corpus-value x)))
-    (printf "~a document-name: ~a words: ~a unique words: ~a~n" name  k (bow-total-of-counts v) (bow-count v))))
-
 ; document
 (struct document (kind name hash); -> symbol string hash
   #:transparent
@@ -116,23 +54,6 @@
   (writeln (head obj))
   (printf "(head ~a): ~a~n" message (head obj)))
                           
-; string number bow
-; count each downcased word in a string (creating a bag of words)
-(define (string->bow s fraction-retained); -> (hash/c word count)
-  (define verbose #f)
-  (define all-words (regexp-match* #px"[A-Za-z][A-Za-z0-9\\-']*" s))
-  (define to-select (inexact->exact (round (* (length all-words) fraction-retained))))
-  (when (and verbose (not (equal? (length all-words) to-select)))
-    (printf "used the first ~a words of ~a in ~a~n" to-select (length all-words) s))
-  (define words (take all-words to-select))
-  (let iter ((words words)
-             (result (bow (hash))))
-    (cond ((null? words) result)
-          (else (iter (cdr words)
-                      (bow-set result
-                                (string-downcase (car words))
-                                (add1 (bow-ref result (car words) 0))))))))
-
 ; string number (hash/c string number)
 (define (string->words-counts s fraction-retained); -> (hash/c word count)
   (define verbose #f)
@@ -187,46 +108,6 @@
   (define rows (csv->list reader))
   (extract 1 rows (list) (list)))
 
-; path hash
-; Reading stemming file (a CSV) into a hash
-(define (read-stemming-file path); (hash/c word stemmed-word)
-  (define verbose #t)
-  (define word-index 0)
-  (define stemmed-word-index 1)
-  (define (extract record-number xs result)
-    (cond ((equal? record-number 1) (extract (add1 record-number)
-                                             (cdr xs)
-                                             result))
-          (else (let* ((x (first xs))
-                       (word (list-ref x word-index))
-                       (stemmed-word (list-ref stemmed-word-index)))
-                  (when verbose (printf "read-stemming-file ~a ~a ~a~n" x word stemmed-word))
-                  (extract (add1 record-number)
-                          (cdr xs)
-                          (hash-set result word stemmed-word))))))
-  (define reader (make-csv-reader (open-input-file path)))
-  (define rows (csv->list reader))
-  (extract 1 rows (hash)))
-
-; bow number (hash/c string 1)
-; determine the frequent words in the vocabulary
-(define (make-stopwords vocabulary cutoff-frequency); -> (hash/c word 1)
-  (define verbose #f)
-  ;(when verbose (for (((word count) vocabulary)) (printf "count:~a word:~a~n" count word)))
-  (define unsorted-words (for/list (((word count) (bow-value vocabulary)))
-                           (cons word count)))
-  (define sorted-words (sort unsorted-words (lambda (a b) (< (cdr a) (cdr b)))))
-  (define total-count (foldl + 0 (map cdr sorted-words)))
-  (define h (for/hash ((word-count sorted-words))
-              (let ((word (car word-count))
-                    (count (cdr word-count)))
-                (define frequency (/ count total-count))
-                (define included (> frequency cutoff-frequency))
-                (when verbose (printf "~a ~a ~a~n" count (exact->inexact frequency) word))
-                (values word frequency))))
-  (for/hash (((word frequency) h)
-             #:when (> frequency cutoff-frequency))
-    (values word 1)))
 
 ; path string
 ; read file at path into a string
@@ -248,17 +129,6 @@
   (for/hash ((fso (if dev (head filenames) filenames))
              #:when (fso-ok? fso))
     (values fso (read-file-at-path (build-path path-to-dir fso)))))
-
-; string number boolean (hash/c string (hash/c string number))
-; path corpus
-; read all visible files in a directory as a bag of words
-(define (dir->corpus path retained dev); -> (hash/c filename bow)
-  (define files (read-dir-files path dev)); -> (hash/c path string)
-  (let iter ((filenames (hash-keys files))
-             (result (corpus (hash))))
-    (cond ((null? filenames) result)
-          (else (let ((filename (car filenames)))
-                  (iter (cdr filenames) (corpus-set result filename (string->bow (hash-ref files filename) retained))))))))
 
 ; path number string boolean list
 (define (dir->documents path retained kind dev); -> (listof (document kind filename (hash/c word count)
@@ -286,29 +156,9 @@
     (cond ((zero? normalizer) 0)
           (else (/ dp normalizer)))))
 
-; bow corpus (listof/sorted string.number)
-(define (match-bow-corpus query targets); -> (listof/sorted documentname.cosine-similarity)
-  (define unsorted (for/list (((documentname target-bow) (corpus-value targets)))
-                     (cons documentname (cosine-similarity query target-bow))))
-  (reverse (sort unsorted (lambda (a b) (< (cdr a) (cdr b))))))
-
-; corpus corpus (hash/c string (listof string.number))
-; match each resume to files in a target hash
-(define (match-corpus-corpus queries targets); -> (hash/c query-documentname (listof/sorted target-documentname.cosine-similarity))
-  (for/hash (((query-documentname query-bow) (corpus-value queries)))
-    (values query-documentname (match-bow-corpus query-bow targets))))
-
 ; n list
 (define (til n)
   (build-list n (lambda (x) x)))
-
-; query-grouptitle tasks-by-grouptitle (listof grouptitle similarity-score)
-(define (match-tasks query-grouptitle tasks-by-grouptitle); -> (sorted-listof grouptitle similarity-score)
-  (define query-bow (corpus-ref tasks-by-grouptitle query-grouptitle))
-  (let ((unsorted (for/list (((other-grouptitle other-bow) (corpus-value tasks-by-grouptitle)))
-                    (cons other-grouptitle
-                          (cosine-similarity query-bow other-bow)))))
-    (reverse (sort unsorted (lambda (a b) (< (cdr a) (cdr b)))))))
 
 ; (hash/c symbol any)
 (define (print-options options)
@@ -316,35 +166,7 @@
   (for ((k  (sort (hash-keys options)
                   (lambda (a b) (symbol<? a b)))))
     (printf " ~a: ~a~n" k (hash-ref options k)))
-  (printf "~n"))
-
-; corpus corpus corpus bow
-(define (accumulate-vocabulary-corpuses a b c)
-  (define bow-a (corpus-vocabulary a))
-  (define bow-b (corpus-vocabulary b))
-  (define bow-c (corpus-vocabulary c))
-  (define bow-ab (bow-union bow-a bow-b))
-  (define bow-abc (bow-union bow-ab bow-c))
-  bow-abc)
-
-; corpus (hash/c string 1) corpus
-(define (remove-stopwords-from-corpus c stopwords); -> corpus
-  (define (remove-from x); bow -> bow
-    (bow (for/hash (((k v) (bow-value x))
-               #:unless (hash-has-key? stopwords k))
-      (values k v))))
-  (corpus (for/hash (((documentname bow) (corpus-value c)))
-    (values documentname (remove-from bow)))))
-
-; list hash
-; accumulate all of the words
-(define (accumulate-vocabulary lst); -> (hash/c word count)
-  (let iter ((lst lst)
-             (result (hash)))
-    (cond ((null? lst) result)
-          (else (iter (cdr lst)
-                      (hash-union result (document-hash (car lst))))))))
-    
+  (printf "~n"))    
   
 ; (listof documents) symbol (listof documents)
 ; convert hash of counts in each documnts to hash of weights
@@ -386,13 +208,6 @@
   (define sorted (sort (for/list (((k v) h)) (cons k v))
                        (lambda (pair1 pair2) (< (cdr pair1) (cdr pair2)))))
   (map car sorted))
-
-; hash hash hash
-; difference of hashs
-(define (hash-difference h1 h2); -> hash of elements in h1 that are not in h2
-  (for/hash (((k1 v1) h1)
-             #:unless (hash-has-key? h2 k1))
-    (values k1 v1)))
     
 ; symbol (listof document) (listof document)
 ; keep only documents of the specified kind
