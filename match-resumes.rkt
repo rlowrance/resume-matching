@@ -380,6 +380,23 @@
                 tasks-matched-name
                 tasks-matched-score))))
 
+  ; match each resume to jobs
+  (printf "~nMatching resumes to jobs~n")
+  (for ((resume (filter (lambda (doc) (equal? (document-kind doc) 'resume))
+                        all-documents)))
+    (printf "matches on jobs for resume: ~a~n" (document-name resume))
+    (define-values (matched-names matched-scores)
+      (best-n-matches resume
+                      (filter (lambda (doc) (equal? (document-kind doc) 'job))
+                              all-documents)
+                      (hash-ref options 'n-job-matches)))
+      (for ((job-matched-name matched-names)
+            (job-matched-score matched-scores))
+        (printf "  resume ~a matches job ~a with score ~a~n"
+                (document-name resume)
+                job-matched-name
+                job-matched-score)))
+
   (when (hash-ref options 'dev) (printf "WARNING: dev mode~n"))
   )
 
